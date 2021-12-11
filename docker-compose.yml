@@ -1,0 +1,59 @@
+version: '3'
+services:
+  db:
+    image: mysql:8.0
+    platform: linux/x86_64
+    container_name: db
+    build:
+      dockerfile: ./docker/mysql/Dockerfile
+    environment:
+      MYSQL_DATABASE: heyEmoji
+      MYSQL_USER: primadonna
+      MYSQL_ROOT_PASSWORD: kbj2277!
+      MYSQL_PASSWORD: kbj2277!
+    volumes:
+      - ./docker/mysql/initdb.d:/docker-entrypoint-initdb.d
+    ports:
+      - "3306:3306"
+    networks:
+      - nginx_network
+    tty:
+      true
+    restart:
+      always
+  api:
+    depends_on:
+      - db
+    links:
+      - db
+    container_name: api
+    image: heyemoji-api #Specify the name of the Docker image to be built
+    build:
+      dockerfile: ./docker/api/Dockerfile
+    ports:
+      - "8000:8000"
+    networks:
+      - nginx_network
+      #For example, if you want to edit the source code in real time`volumes`Convenient to mount with
+    volumes:
+      - ./heyEmoji:/app/heyEmoji
+    restart: always
+    #of the app container`CMD`To overwrite`command`use
+    # command: "uvicorn app.main:app --reload --host 0.0.0.0"
+  web:
+    container_name: web
+    image: nginx
+    depends_on:
+      # `app`Because the service (container) needs to be started first`depends_on`Is specified
+      - api
+    ports:
+      #Port mapping:"Host OS port:container(Nginx)Port"
+      - "80:80"
+    volumes:
+      #volume mount:"Host OS path:Path in the container"
+      - ./docker/web/conf.d:/etc/nginx/conf.d
+    networks:
+      - nginx_network
+networks:
+  nginx_network:
+    driver: bridge
