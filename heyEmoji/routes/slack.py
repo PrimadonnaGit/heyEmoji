@@ -7,7 +7,7 @@ from slack_sdk import WebClient
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
-from starlette.responses import JSONResponse, Response
+from starlette.responses import JSONResponse
 
 from heyEmoji.common.config import conf
 from heyEmoji.database.conn import db
@@ -20,40 +20,52 @@ client = WebClient(token=conf_dict.get("BOT_USER_OAUTH_TOKEN"))
 router = APIRouter()
 
 
+@router.on_event("startup")
+async def init_user_startup():
+    """
+        workspace 유저 목록을 db에 초기화
+    :return:
+    """
+    result = client.users_list()
+    for user in result["members"]:
+        if not user.get('is_bot'):
+            if user.get('profile').get('display_name') and user.get("id") is not 'USLACKBOT':
+                User.create(
+                    auto_commit=True,
+                    username=user.get('profile').get('display_name'),
+                    slack_id=user.get("id"),
+                    avatar_url=user.get('profile').get('image_32'))
+
+
 @router.get("/users")
 async def get_users(session: Session = Depends(db.session)):
-    users = User.get_all()
+    """
+    유저 현황
+    :param session: db session
+    :return:
+    """
+    users = User.get_all(session=session)
     return JSONResponse(status_code=200, content=dict(user=[user.as_dict() for user in users]))
 
 
 @router.get("/reactions")
 async def get_users(session: Session = Depends(db.session)):
-    reactions = Reaction.get_all()
+    """
+    리액션 현황
+    :param session: db session
+    :return:
+    """
+    reactions = Reaction.get_all(session=session)
     return JSONResponse(status_code=200, content=dict(reaction=[reaction.as_dict() for reaction in reactions]))
-
-
-@router.get("/init")
-async def init_user(session: Session = Depends(db.session)):
-    result = client.users_list()
-    for user in result["members"]:
-        if not user.get('is_bot'):
-            if user.get('profile').get('display_name') and user.get('profile').get('display_name') is not 'Slackbot':
-                User.create(session=session,
-                            auto_commit=True,
-                            username=user.get('profile').get('display_name'),
-                            slack_id=user.get("id"),
-                            avatar_url=user.get('profile').get('image_32'))
-    return Response(status_code=200)
 
 
 @router.post("/events")
 async def action_endpoint(event_hook: SlackEventHook, session: Session = Depends(db.session)):
-    event_type = event_hook.type
+    from_user = event_hook.event.user
 
-    if event_type == 'url_verification':
+    if event_hook.type == 'url_verification':  # slack event subscription verify
         return JSONResponse(status_code=200, content=dict(challenge=event_hook.challenge))
-    elif event_type == 'app_home_opened':
-        from_user = event_hook.event.user
+    elif event_hook.event.type == 'app_home_opened':  # slack app home
 
         sub_query1 = session.query(Reaction.to_user, func.sum(Reaction.count).label('count')).group_by(
             Reaction.to_user).subquery('received_reaction')
@@ -61,7 +73,7 @@ async def action_endpoint(event_hook: SlackEventHook, session: Session = Depends
             Reaction.from_user).subquery('send_reaction')
 
         user_count = session \
-            .query(User.id, User.username, User.my_reaction,
+            .query(User.id, User.slack_id, User.username, User.today_reaction,
                    func.coalesce(sub_query1.c.count, 0).label('received_reaction'),
                    func.coalesce(sub_query2.c.count, 0).label('send_reaction')) \
             .outerjoin(sub_query1, sub_query1.c.to_user == User.id) \
@@ -69,10 +81,19 @@ async def action_endpoint(event_hook: SlackEventHook, session: Session = Depends
             .order_by(text('received_reaction desc')) \
             .all()
 
-        view_text = '\n'.join(
-            [f'{uc.username} : {uc.my_reaction}/{uc.received_reaction}/{uc.send_reaction}' for uc in user_count])
+        ranking_view_text = '\n'.join(
+            [
+                f'{uc.username} : 받은 {conf_dict.get("EMOJI")} {uc.received_reaction} 보낸 {conf_dict.get("EMOJI")} {uc.send_reaction}'
+                for uc in user_count])
 
-        result = client.views_publish(
+        personal_view_text = ''
+        for uc in user_count:
+            if uc.slack_id == from_user:
+                personal_view_text += f'남은 {conf_dict.get("EMOJI")} : {uc.today_reaction}개 \n'
+                personal_view_text += f'받은 {conf_dict.get("EMOJI")} : {uc.received_reaction}개 \n'
+                personal_view_text += f'보낸 {conf_dict.get("EMOJI")} : {uc.send_reaction}개'
+
+        client.views_publish(
             user_id=from_user,
             view={
                 "type": "home",
@@ -81,8 +102,31 @@ async def action_endpoint(event_hook: SlackEventHook, session: Session = Depends
                         "type": "section",
                         "text": {
                             "type": "mrkdwn",
-                            "text": "*Welcome home, <@{}> :house:*\n 남은 이모지/받은 이모지/보낸 이모지".format(from_user),
+                            "text": ":waving-from-afar-left: 헤이 이모지로 당신의 감사를 표현하세요! :waving-from-afar-right:",
                         },
+                    },
+                    {"type": "divider"},
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": "\n*나의 현황*",
+                        },
+                    },
+                    {"type": "divider"},
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": personal_view_text,
+                        },
+                    },
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": "\n*전체 순위표*"
+                        }
                     },
                     {"type": "divider"},
                     {
@@ -90,23 +134,31 @@ async def action_endpoint(event_hook: SlackEventHook, session: Session = Depends
                         "elements": [
                             {
                                 "type": "mrkdwn",
-                                "text": view_text,
+                                "text": ranking_view_text,
                             }
                         ],
                     },
                     {"type": "divider"},
+                    {
+                        "type": "context",
+                        "elements": [
+                            {
+                                "type": "mrkdwn",
+                                "text": "Developed by Primadonna",
+                            }
+                        ],
+                    },
                 ],
             },
         )
         return JSONResponse(status_code=200, content=dict(msg="ok"))
 
-    else:
-        channel = event_hook.event.channel
-        from_user = event_hook.event.user
+    else:  # normal event
         send_text = event_hook.event.text
 
         from_user_db = User.get(session=session, slack_id=from_user)
-        from_user_display_name = from_user_db.username
+        if not from_user_db:
+            return JSONResponse(status_code=200)
         from_user_id = from_user_db.id
 
         to_users = re.findall(r'\<\@\S+\>', send_text)
@@ -114,12 +166,13 @@ async def action_endpoint(event_hook: SlackEventHook, session: Session = Depends
 
         if to_users and conf_dict.get("EMOJI") in send_text:  # emoji 확인
             emoji_count = send_text.count(conf_dict.get("EMOJI"))
+
             for to_user in to_users:
                 # 남은 갯수 리마인드
                 from_user_db = User.get(session=session, id=from_user_id)
 
-                if from_user_db.my_reaction >= emoji_count:
-                    from_user_db.my_reaction -= emoji_count
+                if from_user_db.today_reaction >= emoji_count:
+                    from_user_db.today_reaction -= emoji_count
                     to_user_db = User.get(session=session, slack_id=to_user[2:-1])
                     to_user_id = to_user_db.id
                     # 전송 확인
@@ -132,15 +185,14 @@ async def action_endpoint(event_hook: SlackEventHook, session: Session = Depends
                                     from_user=from_user_id,
                                     type=conf_dict.get("EMOJI"),
                                     count=emoji_count)
-                    # 선물 메세지
-                    client.chat_postMessage(channel=channel,
-                                            text=f"{from_user_display_name}님이 {to_user}님에게 이모지를 {emoji_count}개 선물하셨습니다.")
-
-                    # 확인 메세지
+                    # 보낸 메세지
                     client.chat_postMessage(channel=from_user,
-                                            text=f"{from_user_display_name}님이 오늘 선물 가능한 이모지 개수는 {from_user_db.my_reaction}개 입니다.")
+                                            text=f"{to_user}님에게 이모지를 {emoji_count}개 선물하셨습니다. 남은 이모지는 {from_user_db.today_reaction}개 입니다.")
+                    # 받은 메세지
+                    client.chat_postMessage(channel=to_user[2:-1],
+                                            text=f"<@{from_user}>님이 이모지를 {emoji_count}개 선물하셨습니다.")
                 else:
                     client.chat_postMessage(channel=from_user,
-                                            text=f"{from_user_display_name}님은 오늘 선물 가능한 이모지를 모두 소진하셨습니다.")
+                                            text=f"<@{from_user}>님은 오늘 선물 가능한 이모지를 모두 소진하셨습니다.")
 
     return JSONResponse(status_code=200)

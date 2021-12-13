@@ -1,10 +1,10 @@
 create table users
 (
-    id          int auto_increment primary key,
-    username    varchar(255) null,
-    slack_id    varchar(255),
-    my_reaction int default 5,
-    avatar_url  varchar(1000) null
+    id             int auto_increment primary key,
+    username       varchar(255) null,
+    slack_id       varchar(255),
+    today_reaction int default 5,
+    avatar_url     varchar(1000) null
 );
 
 

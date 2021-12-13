@@ -1,13 +1,12 @@
 from dataclasses import asdict
 
 import uvicorn
-from fastapi import FastAPI, Request, Depends
-
+from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
 from heyEmoji.common.config import conf
-from heyEmoji.routes import index, slack
 from heyEmoji.database.conn import db
+from heyEmoji.routes import index, scheduler, slack
 
 
 def create_app():
@@ -17,7 +16,7 @@ def create_app():
     """
     # Config
     c = conf()
-    conf_dict = asdict(c)
+    conf_dict = asdict(conf())
     # APP
     app = FastAPI()
     # DB
@@ -27,7 +26,7 @@ def create_app():
     # Middleware
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=conf().ALLOW_SITE,
+        allow_origins=c.ALLOW_SITE,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -35,6 +34,7 @@ def create_app():
 
     # Router
     app.include_router(index.router)
+    app.include_router(scheduler.router, tags=["Scheduler"], prefix="/scheduler")
     app.include_router(slack.router, tags=["Slack"], prefix="/slack")
 
     return app

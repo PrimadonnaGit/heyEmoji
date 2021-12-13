@@ -1,5 +1,6 @@
+from typing import List, Optional
+
 from pydantic import BaseModel
-from typing import Optional, List
 
 
 # about User
@@ -7,7 +8,7 @@ class User(BaseModel):
     id: int
     username: str
     slack_id: str
-    my_reaction: int
+    today_reaction: int
 
     class Config:
         orm_mode = True
@@ -23,7 +24,7 @@ class UserReaction(BaseModel):
     username: str
     slack_id: str
     avatar_url: str
-    my_reaction: int
+    today_reaction: int
     total_reaction: int
 
 

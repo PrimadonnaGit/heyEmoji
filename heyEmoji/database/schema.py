@@ -1,5 +1,5 @@
-from sqlalchemy import (Boolean, Column, DateTime, Enum, Integer, String, func, ForeignKey)
-from sqlalchemy.orm import Session, relationship
+from sqlalchemy import (Column, ForeignKey, Integer, String)
+from sqlalchemy.orm import Session
 
 from heyEmoji.database.conn import Base, db
 
@@ -22,7 +22,7 @@ class BaseMixin:
         return hash(self.id)
 
     @classmethod
-    def create(cls, session: Session, auto_commit=False, **kwargs):
+    def create(cls, session: Session = None, auto_commit=False, **kwargs):
         """
         테이블 데이터 적재 전용 함수
         :param session:
@@ -30,15 +30,17 @@ class BaseMixin:
         :param kwargs: 적재 할 데이터
         :return:
         """
+        sess = next(db.session()) if not session else session
+
         obj = cls()
         for col in obj.all_columns():
             col_name = col.name
             if col_name in kwargs:
                 setattr(obj, col_name, kwargs.get(col_name))
-        session.add(obj)
-        session.flush()
+        sess.add(obj)
+        sess.flush()
         if auto_commit:
-            session.commit()
+            sess.commit()
         return obj
 
     @classmethod
@@ -141,7 +143,8 @@ class BaseMixin:
 
         self._session.flush()
         if qs > 0:
-            ret = self._q.first()
+            ret = self._q.all()
+
         if auto_commit:
             self._session.commit()
         return ret
@@ -178,12 +181,12 @@ class User(Base, BaseMixin):
     __tablename__ = "users"
     username = Column(String(100), nullable=True)  # display name
     slack_id = Column(String(50), nullable=False)  # 슬랙 아이디
-    my_reaction = Column(Integer, nullable=False, default=5)  # 사용할 수 있는 리액션(이모지) 개수
+    today_reaction = Column(Integer, nullable=False, default=5)  # 사용할 수 있는 리액션(이모지) 개수
     avatar_url = Column(String(100), nullable=True)  # 프로필 이미지 url
 
     def __repr__(self):
-        return 'id : %s, username : %s, slack_id : %s, my_reaction : %d' % (
-        self.id, self.username, self.slack_id, self.my_reaction)
+        return 'id : %s, username : %s, slack_id : %s, today_reaction : %d' % (
+            self.id, self.username, self.slack_id, self.today_reaction)
 
 
 class Reaction(Base, BaseMixin):
