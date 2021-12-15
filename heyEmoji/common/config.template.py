@@ -17,6 +17,7 @@ class Config:
     """
     Basic Configuration
     """
+
     BASE_DIR = base_dir
     DB_POOL_RECYCLE: int = 900
     DB_ECHO: bool = False
@@ -26,6 +27,10 @@ class Config:
 
 @dataclass
 class LocalConfig(Config):
+    """
+    Local Configuration
+    """
+
     DB_URL: str = "DB_URL"
     PROJ_RELOAD: bool = True
     TRUSTED_HOSTS = ["*"]
@@ -34,6 +39,10 @@ class LocalConfig(Config):
 
 @dataclass
 class ProdConfig(Config):
+    """
+    Production Configuration
+    """
+
     DB_URL: str = "DB_URL"
     PROJ_RELOAD: bool = False
     TRUSTED_HOSTS = ["*"]
@@ -42,6 +51,10 @@ class ProdConfig(Config):
 
 @dataclass
 class TestConfig(Config):
+    """
+    Test Configuration
+    """
+
     DB_URL: str = "DB_URL"
     TRUSTED_HOSTS = ["*"]
     ALLOW_SITE = ["*"]

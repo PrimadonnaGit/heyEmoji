@@ -28,13 +28,17 @@ async def init_user_startup():
     """
     result = client.users_list()
     for user in result["members"]:
-        if not user.get('is_bot'):
-            if user.get('profile').get('display_name') and user.get("id") is not 'USLACKBOT':
+        if not user.get("is_bot"):
+            if (
+                user.get("profile").get("display_name")
+                and user.get("id") is not "USLACKBOT"
+            ):
                 User.create(
                     auto_commit=True,
-                    username=user.get('profile').get('display_name'),
+                    username=user.get("profile").get("display_name"),
                     slack_id=user.get("id"),
-                    avatar_url=user.get('profile').get('image_32'))
+                    avatar_url=user.get("profile").get("image_32"),
+                )
 
 
 @router.get("/users")
@@ -45,7 +49,9 @@ async def get_users(session: Session = Depends(db.session)):
     :return:
     """
     users = User.get_all(session=session)
-    return JSONResponse(status_code=200, content=dict(user=[user.as_dict() for user in users]))
+    return JSONResponse(
+        status_code=200, content=dict(user=[user.as_dict() for user in users])
+    )
 
 
 @router.get("/reactions")
@@ -56,42 +62,69 @@ async def get_users(session: Session = Depends(db.session)):
     :return:
     """
     reactions = Reaction.get_all(session=session)
-    return JSONResponse(status_code=200, content=dict(reaction=[reaction.as_dict() for reaction in reactions]))
+    return JSONResponse(
+        status_code=200,
+        content=dict(reaction=[reaction.as_dict() for reaction in reactions]),
+    )
 
 
 @router.post("/events")
-async def action_endpoint(event_hook: SlackEventHook, session: Session = Depends(db.session)):
+async def action_endpoint(
+    event_hook: SlackEventHook, session: Session = Depends(db.session)
+):
     from_user = event_hook.event.user
 
-    if event_hook.type == 'url_verification':  # slack event subscription verify
-        return JSONResponse(status_code=200, content=dict(challenge=event_hook.challenge))
-    elif event_hook.event.type == 'app_home_opened':  # slack app home
+    if event_hook.type == "url_verification":  # slack event subscription verify
+        return JSONResponse(
+            status_code=200, content=dict(challenge=event_hook.challenge)
+        )
+    elif event_hook.event.type == "app_home_opened":  # slack app home
 
-        sub_query1 = session.query(Reaction.to_user, func.sum(Reaction.count).label('count')).group_by(
-            Reaction.to_user).subquery('received_reaction')
-        sub_query2 = session.query(Reaction.from_user, func.sum(Reaction.count).label('count')).group_by(
-            Reaction.from_user).subquery('send_reaction')
+        sub_query1 = (
+            session.query(Reaction.to_user, func.sum(Reaction.count).label("count"))
+            .group_by(Reaction.to_user)
+            .subquery("received_reaction")
+        )
+        sub_query2 = (
+            session.query(Reaction.from_user, func.sum(Reaction.count).label("count"))
+            .group_by(Reaction.from_user)
+            .subquery("send_reaction")
+        )
 
-        user_count = session \
-            .query(User.id, User.slack_id, User.username, User.today_reaction,
-                   func.coalesce(sub_query1.c.count, 0).label('received_reaction'),
-                   func.coalesce(sub_query2.c.count, 0).label('send_reaction')) \
-            .outerjoin(sub_query1, sub_query1.c.to_user == User.id) \
-            .outerjoin(sub_query2, sub_query2.c.from_user == User.id) \
-            .order_by(text('received_reaction desc')) \
+        user_count = (
+            session.query(
+                User.id,
+                User.slack_id,
+                User.username,
+                User.today_reaction,
+                func.coalesce(sub_query1.c.count, 0).label("received_reaction"),
+                func.coalesce(sub_query2.c.count, 0).label("send_reaction"),
+            )
+            .outerjoin(sub_query1, sub_query1.c.to_user == User.id)
+            .outerjoin(sub_query2, sub_query2.c.from_user == User.id)
+            .order_by(text("received_reaction desc"))
             .all()
+        )
 
-        ranking_view_text = '\n'.join(
+        ranking_view_text = "\n".join(
             [
                 f'{uc.username} : 받은 {conf_dict.get("EMOJI")} {uc.received_reaction} 보낸 {conf_dict.get("EMOJI")} {uc.send_reaction}'
-                for uc in user_count])
+                for uc in user_count
+            ]
+        )
 
-        personal_view_text = ''
+        personal_view_text = ""
         for uc in user_count:
             if uc.slack_id == from_user:
-                personal_view_text += f'남은 {conf_dict.get("EMOJI")} : {uc.today_reaction}개 \n'
-                personal_view_text += f'받은 {conf_dict.get("EMOJI")} : {uc.received_reaction}개 \n'
-                personal_view_text += f'보낸 {conf_dict.get("EMOJI")} : {uc.send_reaction}개'
+                personal_view_text += (
+                    f'남은 {conf_dict.get("EMOJI")} : {uc.today_reaction}개 \n'
+                )
+                personal_view_text += (
+                    f'받은 {conf_dict.get("EMOJI")} : {uc.received_reaction}개 \n'
+                )
+                personal_view_text += (
+                    f'보낸 {conf_dict.get("EMOJI")} : {uc.send_reaction}개'
+                )
 
         client.views_publish(
             user_id=from_user,
@@ -123,10 +156,7 @@ async def action_endpoint(event_hook: SlackEventHook, session: Session = Depends
                     },
                     {
                         "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": "\n*전체 순위표*"
-                        }
+                        "text": {"type": "mrkdwn", "text": "\n*전체 순위표*"},
                     },
                     {"type": "divider"},
                     {
@@ -161,7 +191,7 @@ async def action_endpoint(event_hook: SlackEventHook, session: Session = Depends
             return JSONResponse(status_code=200)
         from_user_id = from_user_db.id
 
-        to_users = re.findall(r'\<\@\S+\>', send_text)
+        to_users = re.findall(r"\<\@\S+\>", send_text)
         to_users = set(to_users)
 
         if to_users and conf_dict.get("EMOJI") in send_text:  # emoji 확인
@@ -177,22 +207,30 @@ async def action_endpoint(event_hook: SlackEventHook, session: Session = Depends
                     to_user_id = to_user_db.id
                     # 전송 확인
                     now = datetime.now()
-                    Reaction.create(session=session,
-                                    auto_commit=True,
-                                    year=now.year,
-                                    month=now.month,
-                                    to_user=to_user_id,
-                                    from_user=from_user_id,
-                                    type=conf_dict.get("EMOJI"),
-                                    count=emoji_count)
+                    Reaction.create(
+                        session=session,
+                        auto_commit=True,
+                        year=now.year,
+                        month=now.month,
+                        to_user=to_user_id,
+                        from_user=from_user_id,
+                        type=conf_dict.get("EMOJI"),
+                        count=emoji_count,
+                    )
                     # 보낸 메세지
-                    client.chat_postMessage(channel=from_user,
-                                            text=f"{to_user}님에게 이모지를 {emoji_count}개 선물하셨습니다. 남은 이모지는 {from_user_db.today_reaction}개 입니다.")
+                    client.chat_postMessage(
+                        channel=from_user,
+                        text=f"{to_user}님에게 이모지를 {emoji_count}개 선물하셨습니다. 남은 이모지는 {from_user_db.today_reaction}개 입니다.",
+                    )
                     # 받은 메세지
-                    client.chat_postMessage(channel=to_user[2:-1],
-                                            text=f"<@{from_user}>님이 이모지를 {emoji_count}개 선물하셨습니다.")
+                    client.chat_postMessage(
+                        channel=to_user[2:-1],
+                        text=f"<@{from_user}>님이 이모지를 {emoji_count}개 선물하셨습니다.",
+                    )
                 else:
-                    client.chat_postMessage(channel=from_user,
-                                            text=f"<@{from_user}>님은 오늘 선물 가능한 이모지를 모두 소진하셨습니다.")
+                    client.chat_postMessage(
+                        channel=from_user,
+                        text=f"<@{from_user}>님은 오늘 선물 가능한 이모지를 모두 소진하셨습니다.",
+                    )
 
     return JSONResponse(status_code=200)

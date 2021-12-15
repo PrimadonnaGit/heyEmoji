@@ -1,4 +1,4 @@
-from sqlalchemy import (Column, ForeignKey, Integer, String)
+from sqlalchemy import Column, ForeignKey, Integer, String
 from sqlalchemy.orm import Session
 
 from heyEmoji.database.conn import Base, db
@@ -13,7 +13,11 @@ class BaseMixin:
         self.served = None
 
     def all_columns(self):
-        return [c for c in self.__table__.columns if c.primary_key is False and c.name != "created_at"]
+        return [
+            c
+            for c in self.__table__.columns
+            if c.primary_key is False and c.name != "created_at"
+        ]
 
     def as_dict(self):
         return {x.name: getattr(self, x.name) for x in self.__table__.columns}
@@ -72,7 +76,9 @@ class BaseMixin:
             col = getattr(cls, key)
             query = query.filter(col == val)
         if query.count() > 1:
-            raise Exception("Only one row is supposed to be returned, but got more than one.")
+            raise Exception(
+                "Only one row is supposed to be returned, but got more than one."
+            )
         result = query.first()
         if not session:
             sess.close()
@@ -94,15 +100,15 @@ class BaseMixin:
             col = getattr(cls, key[0])
             if len(key) == 1:
                 cond.append((col == val))
-            elif len(key) == 2 and key[1] == 'gt':
+            elif len(key) == 2 and key[1] == "gt":
                 cond.append((col > val))
-            elif len(key) == 2 and key[1] == 'gte':
+            elif len(key) == 2 and key[1] == "gte":
                 cond.append((col >= val))
-            elif len(key) == 2 and key[1] == 'lt':
+            elif len(key) == 2 and key[1] == "lt":
                 cond.append((col < val))
-            elif len(key) == 2 and key[1] == 'lte':
+            elif len(key) == 2 and key[1] == "lte":
                 cond.append((col <= val))
-            elif len(key) == 2 and key[1] == 'in':
+            elif len(key) == 2 and key[1] == "in":
                 cond.append((col.in_(val)))
         obj = cls()
         if session:
@@ -133,7 +139,9 @@ class BaseMixin:
                 col_name = a
                 is_asc = True
             col = self.cls_attr(col_name)
-            self._q = self._q.order_by(col.asc()) if is_asc else self._q.order_by(col.desc())
+            self._q = (
+                self._q.order_by(col.asc()) if is_asc else self._q.order_by(col.desc())
+            )
         return self
 
     def update(self, auto_commit: bool = False, **kwargs):
@@ -185,8 +193,12 @@ class User(Base, BaseMixin):
     avatar_url = Column(String(100), nullable=True)  # 프로필 이미지 url
 
     def __repr__(self):
-        return 'id : %s, username : %s, slack_id : %s, today_reaction : %d' % (
-            self.id, self.username, self.slack_id, self.today_reaction)
+        return "id : %s, username : %s, slack_id : %s, today_reaction : %d" % (
+            self.id,
+            self.username,
+            self.slack_id,
+            self.today_reaction,
+        )
 
 
 class Reaction(Base, BaseMixin):
@@ -199,4 +211,9 @@ class Reaction(Base, BaseMixin):
     count = Column(Integer, default=0)  # 받은 개수
 
     def __repr__(self):
-        return 'year : %d, month : %d, to : %d, from : %d' % (self.year, self.month, self.to_user, self.from_user)
+        return "year : %d, month : %d, to : %d, from : %d" % (
+            self.year,
+            self.month,
+            self.to_user,
+            self.from_user,
+        )

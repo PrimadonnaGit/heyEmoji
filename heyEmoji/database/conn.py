@@ -25,15 +25,10 @@ class SQLAlchemy:
         echo = kwargs.setdefault("DB_ECHO", False)
 
         self._engine = create_engine(
-            database_url,
-            echo=echo,
-            pool_recycle=pool_recycle,
-            pool_pre_ping=True
+            database_url, echo=echo, pool_recycle=pool_recycle, pool_pre_ping=True
         )
         self._session = sessionmaker(
-            autocommit=False,
-            autoflush=False,
-            bind=self._engine
+            autocommit=False, autoflush=False, bind=self._engine
         )
 
         @app.on_event("startup")

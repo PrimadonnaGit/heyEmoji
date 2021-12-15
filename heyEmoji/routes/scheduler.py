@@ -13,6 +13,6 @@ def reset_user_today_reaction():
 @router.on_event("startup")
 async def set_scheduler():
     scheduler = AsyncIOScheduler(timezone="Asia/Seoul")
-    scheduler.add_job(reset_user_today_reaction, 'cron', hour='0')
+    scheduler.add_job(reset_user_today_reaction, "cron", hour="0")
     scheduler.start()
     print("scheduler start")
